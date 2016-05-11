@@ -1,0 +1,34 @@
+This is the source code of our paper titled "Detecting Keypoint Sets on 3D Point Clouds via Histogram of Normal Orientations".
+
+Pre-requisites: PCL 
+
+To Build:
+
+cd HoNO
+mkdir build
+cd build
+cmake ..
+make 
+
+Then run
+
+./HoNO  to run HoNO keypoint detector on a sample point cloud :)
+
+
+More info:
+
+All the datasets and the evaluation scheme that we followed is available at 
+http://vision.deis.unibo.it/keypoints3d/?page_id=2
+
+The program "HoNO" has the implementation of the proposed algorithm and runs it on a sample point cloud. This should give complete picture about the proposed algorithm with a reference implementation.
+
+Next, "dataset_evaluation_HoNO" runs the proposed algorithm on five datasets and can be used to reproduce the results as shown in the paper.
+To generate results similar to the ones shown in the paper:
+
+1. The evaluation is carried out based on the steps mentioned in http://vision.deis.unibo.it/keypoints3d/?page_id=2, and the IJCV paper by Tombari et al., for fixed scale keypoint detector at these mesh resolutions 6mr, 10mr, 14mr, 18mr.
+
+2. Please read the experiments section of IJCV paper by Tombari et al., mainly the section 3.4. Accordingly, please read the section 3.3 in our paper to get the parameter and experimental settings correct!
+
+3. To evaluate our proposed method on various datasets using the program, "dataset_evaluation_HoNO", you need to change few parameters in dataset_evaluation_HoNO.cpp. This generates feature files which can be used to with the automated scripts provided at http://vision.deis.unibo.it/keypoints3d/?page_id=2 and generate the comparison graphs automatically. The parameters that need to be changed are also indicated in the file "dataset_evaluation_HoNO.cpp".
+
+

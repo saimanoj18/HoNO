@@ -1,0 +1,490 @@
+#include <general_functions.h>
+
+
+
+
+class indices_with_normal_differences
+{
+public:
+    int index;
+    float angular_difference;
+};
+
+class indices_with_principal_curvature_differences
+{
+public:
+    int index;
+    float angular_difference;
+    float pc1;
+};
+
+class kurtosis_and_smallest_eigen
+{
+public:
+
+    float kurtosis;
+    float eigen;
+};
+
+
+class KPD
+{
+public:
+
+    float cloud_resolution;
+
+    std::vector<indices_with_normal_differences> object1;
+    std::vector<indices_with_principal_curvature_differences> object2;
+    std::vector<kurtosis_and_smallest_eigen> object3;
+    std::vector<kurtosis_and_smallest_eigen> object4;
+
+
+    pcl::PointCloud<pcl::Boundary> boundaries;
+
+    std::vector<int> first_keypoint_indices; // indices of the keypoints in input point cloud;
+    std::vector<int> second_keypoint_indices;
+    std::vector<int> third_keypoint_indices;
+    std::vector<int> fourth_keypoint_indices;
+    std::vector<int> fifth_keypoint_indices;
+    std::vector<int> sixth_keypoint_indices;
+    std::vector<int> seventh_keypoint_indices;
+
+    pcl::PointCloud<pcl::PointXYZ> cloud;
+    pcl::PointCloud<pcl::PointXYZ> input_cloud;
+    pcl::PointCloud<pcl::PointXYZ> keypoints;
+    pcl::PointCloud<pcl::Normal> normals;
+    pcl::PointCloud<pcl::PrincipalCurvatures> principal_curvatures;
+
+    pcl::PointCloud<pcl::PointXYZ> first_keypoints_cloud; // after passing thru local_maxima_of_principal_curvatures
+    pcl::PointCloud<pcl::PointXYZ> second_keypoints_cloud;
+    pcl::PointCloud<pcl::PointXYZ> third_keypoints_cloud;
+    pcl::PointCloud<pcl::PointXYZ> fourth_keypoints_cloud;
+    pcl::PointCloud<pcl::PointXYZ> fifth_keypoints_cloud;
+    pcl::PointCloud<pcl::PointXYZ> sixth_keypoints_cloud;
+    pcl::PointCloud<pcl::PointXYZ> seventh_keypoints_cloud;
+
+    void computeCloudResolution ()
+    {
+        double res = 0.0;
+        int n_points = 0;
+        int nres;
+        std::vector<int> indices (2);
+        std::vector<float> sqr_distances (2);
+        pcl::search::KdTree<pcl::PointXYZ> tree;
+        tree.setInputCloud (cloud.makeShared());
+
+        for (size_t i = 0; i < cloud.size (); ++i)
+        {
+            if (! pcl_isfinite (cloud[i].x))
+            {
+                continue;
+            }
+            //Considering the second neighbor since the first is the point itself.
+            nres = tree.nearestKSearch (cloud.points[i], 2, indices, sqr_distances);
+            if (nres == 2)
+            {
+                res += sqrt (sqr_distances[1]);
+                ++n_points;
+            }
+        }
+        if (n_points != 0)
+        {
+            res /= (n_points);
+        }
+
+        this->cloud_resolution = res;
+
+    }
+
+
+    void normal_estimation_pcl(float radius)
+    {
+        clock_t start, end;
+        double cpu_time_used;
+        start = clock();
+
+        // NORMAL ESTIMATION USING PCL
+        pcl::NormalEstimationOMP<pcl::PointXYZ, pcl::Normal> ne;
+        ne.setInputCloud (cloud.makeShared());
+        ne.setNumberOfThreads(4);
+        pcl::search::KdTree<pcl::PointXYZ>::Ptr tree ;
+        ne.setSearchMethod (tree);
+        ne.setRadiusSearch (radius); // param
+        ne.compute (normals);
+
+
+        end = clock();
+        cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+        std::cout << "Time take for estimating Normals = " << (double)cpu_time_used << std::endl;
+
+
+    }
+
+
+
+
+    void local_maxima_of_hist_of_normals_orientations(float hist_radius, float kurtosis_threshold)
+    {
+        clock_t start, end;
+        double cpu_time_used;
+        start = clock();
+
+        pcl::PointCloud<pcl::PointNormal>::Ptr cloud_normals(new pcl::PointCloud<PointNormal>);
+        pcl::concatenateFields(cloud, normals, *cloud_normals);// cloud_normals has both points and their normals
+
+        pcl::search::KdTree<pcl::PointXYZ> kdtree;
+        kdtree.setInputCloud (cloud.makeShared());
+        pcl::PointXYZ searchPoint;
+        std::vector<int> temp_keypoint_indices;
+
+        pcl::PointCloud<pcl::PointXYZ>::Ptr scanned_keypoints (new pcl::PointCloud<pcl::PointXYZ>);
+
+
+
+        for (size_t i = 0; i < cloud.points.size(); ++i)// here, the input is whole cloud
+        {
+            float histogram[18] = {};
+            int histogram_samples = 0;
+
+            searchPoint = cloud.points[i];
+
+            std::vector<int> pointIdxRadiusSearch;
+            std::vector<float> pointRadiusSquaredDistance;
+
+            float radius = hist_radius; //param
+
+            if ( kdtree.radiusSearch(searchPoint, radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0 and pointIdxRadiusSearch.size()>10)
+            {
+                Eigen::Vector3f keypoint_normal_vector (cloud_normals->points[pointIdxRadiusSearch[0]].normal_x,
+                                                        cloud_normals->points[pointIdxRadiusSearch[0]].normal_y,
+                                                        cloud_normals->points[pointIdxRadiusSearch[0]].normal_z);
+
+
+                for (size_t k = 1 ; k < pointIdxRadiusSearch.size(); ++k)
+                {
+                    Eigen::Vector3f normal_vector_here (cloud_normals->points[pointIdxRadiusSearch[k]].normal_x,
+                                                        cloud_normals->points[pointIdxRadiusSearch[k]].normal_y,
+                                                        cloud_normals->points[pointIdxRadiusSearch[k]].normal_z );
+
+                    //std::cout << keypoint_normal_vector.dot(normal_vector_here) << std::endl;
+
+                    float temp_radian = keypoint_normal_vector.dot(normal_vector_here);
+                    float degrees = acos (temp_radian) * 180.0 / PI;
+
+                    if( degrees >= 0 and degrees <= 180 )
+                        bin_into_histogram(degrees,histogram, histogram_samples);
+                    //if (degrees > 100)
+                    //std::cout << "degrees : " << degrees << std::endl;
+                }
+
+                normalize_the_histogram(histogram, histogram_samples);
+
+
+                double skewness = 0, kurtosis = 0;
+                std::vector<double> hist_vector;
+                calculate_skewness_and_kurtosis(skewness, kurtosis, histogram, hist_vector);
+
+                Eigen::Matrix3f covariance_matrix;
+                calculate_covariance_matrix(covariance_matrix, cloud, pointIdxRadiusSearch);
+                Eigen::EigenSolver<Eigen::Matrix3f> es(covariance_matrix);
+                //cout << "The eigenvalues of A are:" << endl << es.eigenvalues() << endl;
+                std::vector<float> eigen_values;
+                eigen_values.push_back(std::real(es.eigenvalues()[0]));
+                eigen_values.push_back(std::real(es.eigenvalues()[1]));
+                eigen_values.push_back(std::real(es.eigenvalues()[2]));
+
+                std::sort(eigen_values.begin(), eigen_values.end());
+
+                //cout << eigen_values[0] << endl;
+                //cout << eigen_values[1] << endl;
+                //cout << eigen_values[2] << endl;
+
+
+                float largest = eigen_values[2];
+                float middle = eigen_values[1];
+                float smallest = eigen_values[0];
+
+
+
+                if (/*total_variance >= total_variance_threshold and */ kurtosis < kurtosis_threshold) // SALIENCY :)
+                {
+                    scanned_keypoints->push_back(searchPoint);
+                    third_keypoint_indices.push_back(i);
+                    kurtosis_and_smallest_eigen temp_here;
+                    temp_here.kurtosis = kurtosis;
+                    temp_here.eigen = largest;
+                    object3.push_back(temp_here);
+                }
+            }
+
+
+        }
+
+
+        //cout << "Input   Keypoints = " << cloud.size() << endl;
+        //cout << "Scanned Keypoints = " << scanned_keypoints->size() << endl;
+        third_keypoints_cloud = *scanned_keypoints;
+
+        end = clock();
+        cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+        std::cout << "Time take for SALIENCY = " << (double)cpu_time_used << std::endl;
+    }
+
+    void do_not_remove_borders ()
+    {
+        fourth_keypoint_indices = third_keypoint_indices;
+        pcl::copyPointCloud(third_keypoints_cloud, fourth_keypoint_indices, fourth_keypoints_cloud);
+        object4 = object3;
+
+    }
+
+    void remove_boundary_points(float boundary_radius)
+    {
+        clock_t start, end;
+        double cpu_time_used;
+        start = clock();
+
+        pcl::BoundaryEstimation<pcl::PointXYZ, pcl::Normal, pcl::Boundary> est;
+        est.setInputCloud (cloud.makeShared());
+        est.setInputNormals (normals.makeShared());
+        est.setRadiusSearch (boundary_radius);   // param
+        est.setSearchMethod ( pcl::search::KdTree<PointXYZ>::Ptr  (new pcl::search::KdTree<PointXYZ>));
+        est.compute (boundaries);
+        /*
+        for(int i = 0; i < cloud.points.size(); i++)
+        {
+            if(boundaries[i].boundary_point < 1)
+            {
+                cloud.points[i].z = 10;//(manchidi)
+            }
+            else
+                cloud.points[i].z = 5; //(boundary)
+        }
+
+
+
+        pcl::visualization::CloudViewer viewer("PCL Viewer");
+
+        viewer.showCloud(cloud.makeShared());
+
+        while (!viewer.wasStopped());
+*/
+
+        pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+        kdtree.setInputCloud (cloud.makeShared());
+        pcl::PointXYZ searchPoint;
+        std::vector<int> temp_keypoint_indices;
+
+
+        for (size_t i = 0; i < third_keypoints_cloud.points.size(); ++i)// here, the input is whole cloud
+        {
+            searchPoint = third_keypoints_cloud.points[i];
+
+            std::vector<int> pointIdxRadiusSearch;
+            std::vector<float> pointRadiusSquaredDistance;
+
+            int variable = 1;
+
+            if ( kdtree.radiusSearch(searchPoint, boundary_radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0 )
+            {
+                for (size_t j = 0; j < pointIdxRadiusSearch.size() && variable == 1; ++j)
+                {
+                    if(boundaries[pointIdxRadiusSearch[j]].boundary_point < 1)
+                    {
+                        //
+                    }
+                    else
+                    {
+                        variable = 0;
+                        //this keypoint is a boundary point or it is very close to boundary!!!
+                    }
+
+                }
+
+                if (variable == 1)
+                {
+                    temp_keypoint_indices.push_back( i );
+                    kurtosis_and_smallest_eigen temp_here;
+                    temp_here = object3[i];
+                    object4.push_back(temp_here);
+
+                }
+            }
+
+        }
+
+        fourth_keypoint_indices = temp_keypoint_indices;
+        pcl::copyPointCloud(third_keypoints_cloud, fourth_keypoint_indices, fourth_keypoints_cloud);
+
+
+
+        end = clock();
+        cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+        std::cout << "Time taken removal of Boundary Keypoints = " << (double)cpu_time_used << std::endl;
+
+    }
+
+
+
+
+    void non_maxima_suppression_for_hist_of_norm(float non_max_radius)
+    {
+        clock_t start, end;
+        double cpu_time_used;
+        start = clock();
+
+        pcl::KdTreeFLANN<pcl::PointXYZ> kdtree;
+        kdtree.setInputCloud (fourth_keypoints_cloud.makeShared());
+
+        pcl::PointXYZ searchPoint;
+        std::vector<int> temp_keypoint_indices;
+
+
+        for (size_t i = 0; i < fourth_keypoints_cloud.points.size(); ++i)
+        {
+            searchPoint = fourth_keypoints_cloud.points[i];
+
+            std::vector<int> pointIdxRadiusSearch;
+            std::vector<float> pointRadiusSquaredDistance;
+
+            float center_kurtosis = object4[i].kurtosis;
+            float center_smallest_eigen = object4[i].eigen;
+
+            if (kdtree.radiusSearch (searchPoint, non_max_radius, pointIdxRadiusSearch, pointRadiusSquaredDistance) > 0)
+            {
+                float variable_1 = 1;
+                for (size_t j = 1; j < pointIdxRadiusSearch.size() && variable_1 == 1 ; ++j)
+                {
+
+                    float neighbourhood_kurtosis = object4[pointIdxRadiusSearch[j]].kurtosis;
+                    float neighbourhood_smallest_eigen = object4[pointIdxRadiusSearch[j]].eigen;
+
+                    // center_kurtosis should be greater or lesser than the neighbourhood_kurtosis ?
+                    // look for deinition of kutosis at
+                    // http://web.ipac.caltech.edu/staff/fmasci/home/statistics_refs/SkewStatSignif.pdf
+                    // The height and sharpness of the peak relative to the rest of the data
+                    // are measured by a number called kurtosis. Higher values indicate a
+                    // higher, sharper peak; lower values indicate a lower, less distinct peak.
+
+                    if ( center_kurtosis > neighbourhood_kurtosis and center_smallest_eigen < neighbourhood_smallest_eigen  )
+                    {
+                        variable_1 = 0;
+                        //center_curvature = principal_curvatures->at(pointIdxRadiusSearch[j]).pc1;
+                        //cout << " here " << center_curvature << "  " << neighbourhood_curvature << endl;
+                    }
+                }
+
+                if (variable_1 == 1)
+                {
+                    temp_keypoint_indices.push_back(i);
+                    //cout << " reached here! " << endl;
+                }
+            }
+
+        }
+        pcl::copyPointCloud(fourth_keypoints_cloud,temp_keypoint_indices,fifth_keypoints_cloud);
+        fifth_keypoint_indices = temp_keypoint_indices;
+
+        end = clock();
+        cpu_time_used = ((double) (end - start)) / CLOCKS_PER_SEC;
+        std::cout << "Time take for NMS = " << (double)cpu_time_used << std::endl;
+    }
+
+
+
+
+
+
+    void visualization(int a, int d, int e, int f, int g, int h, int i, int j)
+    {
+
+        boost::shared_ptr<pcl::visualization::PCLVisualizer> viewer (new pcl::visualization::PCLVisualizer ("3D Keypoints Viewer"));
+        viewer->setBackgroundColor (255, 255, 255);
+
+        if (a)
+        {
+            // POINT CLOUD VISUALIZATION IN BLACK COLOR
+            pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color1(cloud.makeShared(), 0, 0, 0);
+            viewer->addPointCloud<pcl::PointXYZ> (cloud.makeShared(), single_color1, "input cloud");
+            viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE, 1, "input cloud");
+            //viewer->addCoordinateSystem (1.0);
+            viewer->initCameraParameters ();
+        }
+
+
+        if (d)
+        {
+            // VISUALIZING FOUND KEYPOINTS IN GREEN COLOR
+            pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color4(third_keypoints_cloud.makeShared(), 0, 255, 0);
+            viewer->addPointCloud<pcl::PointXYZ> (third_keypoints_cloud.makeShared(), single_color4, "third keypoints cloud");
+            viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE , 2, "third keypoints cloud");
+        }
+
+        if (e)
+        {
+            // VISUALIZING FOUND KEYPOINTS IN BLUE COLOR
+            pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color5(fourth_keypoints_cloud.makeShared(), 0, 0, 255);
+            viewer->addPointCloud<pcl::PointXYZ> (fourth_keypoints_cloud.makeShared(), single_color5, "fourth keypoints cloud");
+            viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE , 3, "fourth keypoints cloud");
+        }
+
+        if (f)
+        {
+            // VISUALIZING FOUND KEYPOINTS IN RED COLOR
+            pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color6(fifth_keypoints_cloud.makeShared(), 255, 0, 0);
+            viewer->addPointCloud<pcl::PointXYZ> (fifth_keypoints_cloud.makeShared(), single_color6, "fifth keypoints cloud");
+            viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE , 6, "fifth keypoints cloud");
+        }
+
+        if (g)
+        {
+            // NORMALS VISUALIZATION
+            viewer->addPointCloudNormals <pcl::PointXYZ, pcl::Normal> (cloud.makeShared(), normals.makeShared(), 50, 0.05, "normals1");
+            viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_COLOR, 1.0, 0.0, 0, "normals1");
+            viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, 3, "normals1");
+        }
+
+        if (h)
+        {
+            // PRINCIPAL CURVATURES VISUALIZATION
+            viewer->addPointCloudPrincipalCurvatures(cloud.makeShared(),normals.makeShared(),principal_curvatures.makeShared(),3,0.05,"principal_curvatures");
+            viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_COLOR, 1.0, 0.0, 0.0, "principal_curvatures");
+            viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_LINE_WIDTH, 3, "principal_curvatures");
+        }
+
+        //pcl::io::savePCDFileASCII ("/home/sai/curvatures_pcd.pcd", *principal_curvatures);
+        //std::cerr << "Saved " << " principal curvatures at /home/sai/curvatures.pcd" << std::endl;
+
+        if (i)
+        {
+            // VISUALIZING FOUND KEYPOINTS IN BLUE COLOR
+            pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color7(sixth_keypoints_cloud.makeShared(), 255, 0, 0);
+            viewer->addPointCloud<pcl::PointXYZ> (sixth_keypoints_cloud.makeShared(), single_color7, "sixth keypoints cloud");
+            viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE , 10, "sixth keypoints cloud");
+        }
+
+        if (j)
+        {
+            // VISUALIZING FOUND KEYPOINTS IN BLUE COLOR
+            pcl::visualization::PointCloudColorHandlerCustom<pcl::PointXYZ> single_color8(seventh_keypoints_cloud.makeShared(), 0, 0, 255);
+            viewer->addPointCloud<pcl::PointXYZ> (seventh_keypoints_cloud.makeShared(), single_color8, "seventh keypoints cloud");
+            viewer->setPointCloudRenderingProperties (pcl::visualization::PCL_VISUALIZER_POINT_SIZE , 10, "seventh keypoints cloud");
+        }
+
+        /*
+        std::cout << "Using Boost "
+                  << BOOST_VERSION / 100000     << "."  // major version
+                  << BOOST_VERSION / 100 % 1000 << "."  // minior version
+                  << BOOST_VERSION % 100                // patch level
+                  << std::endl;
+*/
+        while (!viewer->wasStopped ())
+        {
+            viewer->spinOnce (100);
+            boost::this_thread::sleep (boost::posix_time::microseconds (100000));
+        }
+
+    }
+
+};
+
