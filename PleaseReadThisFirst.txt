@@ -1,9 +1,10 @@
 This is the source code of our paper titled "Detecting Keypoint Sets on 3D Point Clouds via Histogram of Normal Orientations".
 
-Pre-requisites: PCL 
+Pre-requisites: PCL. We tested with PCL 1.7.2
 
 To Build:
 
+git clone https://github.com/saimanoj18/HoNO.git
 cd HoNO
 mkdir build
 cd build
