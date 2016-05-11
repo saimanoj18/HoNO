@@ -138,11 +138,11 @@ void find_keypoints(pcl::PointCloud<pcl::PointXYZ> cloud, std::string& temp)
     // Dataset Evaluation Routine
 
 // the feature files are written at these locations. Please change them accordingly with the dataset used for evaluation
-    std::string filepath = "../resultant_feature_files/Kinect";
-    //std::string filepath = "../resultant_feature_files/UWA";
-    //std::string filepath = "../resultant_feature_files/SpaceTime";
-    //std::string filepath = "../resultant_feature_files/Retrieval";
-    //std::string filepath = "../resultant_feature_files/StanfordViews";
+    std::string filepath = "../feature_files_Kinect";
+    //std::string filepath = "../feature_files_UWA";
+    //std::string filepath = "../feature_files_SpaceTime";
+    //std::string filepath = "../feature_files_Retrieval";
+    //std::string filepath = "../feature_files_StanfordViews";
 
 
 
