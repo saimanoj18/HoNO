@@ -11,9 +11,20 @@ cd build
 cmake ..
 make 
 
+Also create the following folders so that the generated feature files are stored in those locations accordingly.
+
+1. cd to HoNO
+2. mkdir feature_files_Kinect
+3. mkdir feature_files_UWA
+4. mkdir feature_files_SpaceTime
+5. mkdir feature_files_Retrieval
+6. mkdir feature_files_StanfordViews
+
+
 Then run
 
-./HoNO  to run HoNO keypoint detector on a sample point cloud :)
+1. ./HoNO  to run HoNO keypoint detector on a sample point cloud :)
+2. ./dataset_evaluation_HoNO to run HoNO on various datasets. Please read below as for this dataset evaluation, some parameters and file locations need to be changed accordingly.
 
 
 More info:
@@ -32,4 +43,4 @@ To generate results similar to the ones shown in the paper:
 
 3. To evaluate our proposed method on various datasets using the program, "dataset_evaluation_HoNO", you need to change few parameters in dataset_evaluation_HoNO.cpp. This generates feature files which can be used to with the automated scripts provided at http://vision.deis.unibo.it/keypoints3d/?page_id=2 and generate the comparison graphs automatically. The parameters that need to be changed are also indicated in the file "dataset_evaluation_HoNO.cpp".
 
-
+Thanks!
